@@ -72,7 +72,6 @@ import Testing
 
     try await writer.append(jpegData: Data([0xFF, 0xD8, 0xFF, 0xD9]), frame: frame)
     let bundle = try await writer.finalize(
-        scanID: scanID,
         createdAt: "2026-08-24T10:00:00+08:00",
         device: ScanDevice(model: "iPhone", osVersion: "iOS 26.0")
     )

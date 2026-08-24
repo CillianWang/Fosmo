@@ -1,11 +1,13 @@
 import Foundation
 
 public actor ScanBundleWriter {
+    public let scanID: UUID
     public let bundleURL: URL
     private let framesURL: URL
     private var frameRecords: [ScanFrame] = []
 
     public init(outputDirectory: URL, scanID: UUID, fileManager: FileManager = .default) throws {
+        self.scanID = scanID
         bundleURL = outputDirectory.appendingPathComponent("\(scanID.uuidString).scanbundle", isDirectory: true)
         framesURL = bundleURL.appendingPathComponent("frames", isDirectory: true)
         try fileManager.createDirectory(at: framesURL, withIntermediateDirectories: true)
@@ -21,7 +23,7 @@ public actor ScanBundleWriter {
     }
 
     @discardableResult
-    public func finalize(scanID: UUID, createdAt: String, device: ScanDevice) throws -> URL {
+    public func finalize(createdAt: String, device: ScanDevice) throws -> URL {
         let manifest = ScanManifest(scanID: scanID, createdAt: createdAt, device: device, frames: frameRecords)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
