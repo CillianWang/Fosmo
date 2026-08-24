@@ -30,6 +30,29 @@ cd ios/ScanBundleKit
 swift test
 ```
 
+## Reconstruct a metric point cloud
+
+Set up the pinned Apple Silicon Depth Pro environment and checkpoint:
+
+```bash
+./scripts/setup-reconstruction.sh
+```
+
+Then run the single-frame M1 reconstruction:
+
+```bash
+PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
+  -m fosmo_reconstruction.cli /path/to/scan.scanbundle \
+  --output /path/to/output \
+  --checkpoint .vendor/ml-depth-pro/checkpoints/depth_pro.pt \
+  --device mps
+```
+
+This produces metric `depth.npy`, an upright depth preview, a colored
+ARKit-world `pointcloud.ply`, a point-cloud preview, and `report.json`. See
+[`docs/reconstruction-smoke-test.md`](docs/reconstruction-smoke-test.md) for
+the coordinate conventions and current single-frame limitation.
+
 ## Run the full-circle coverage backend
 
 The capture app only declares a scan complete after this lightweight local

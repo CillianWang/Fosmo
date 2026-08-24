@@ -12,6 +12,7 @@ dependencies = []
 [project.scripts]
 fosmo-validate = "fosmo_scanbundle.cli:main"
 fosmo-coverage = "fosmo_coverage.server:main"
+fosmo-reconstruct = "fosmo_reconstruction.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

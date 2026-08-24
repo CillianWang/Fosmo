@@ -1,5 +1,6 @@
 .DS_Store
 .venv/
+.venv-reconstruction/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -13,5 +14,6 @@ build/
 DerivedData/
 .derived-data/
 .derived-data-*/
+.vendor/
 xcuserdata/
 *.xcuserstate
