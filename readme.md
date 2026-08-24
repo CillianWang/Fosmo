@@ -71,6 +71,20 @@ turn, uses a 640-pixel TSDF integration width, and targets 150,000 triangles.
 It preserves 360-degree coverage while trading local detail for substantially
 less Depth Pro inference and a smaller phone preview.
 
+Extract a clean Manhattan-space room from an existing fusion:
+
+```bash
+PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
+  -m fosmo_reconstruction.manhattan_cli /path/to/fused-output \
+  --output /path/to/manhattan-output
+```
+
+This gravity-aligns the floor, estimates two dominant orthogonal wall axes,
+keeps the strongest supported boundary pair on each axis, and emits a clean
+floor plus four vertical walls. Furniture, depth ghosting, weak recesses, the
+ceiling surface, and unsupported openings are omitted. The output directory can
+be passed directly to the coverage backend's `--preview-directory` option.
+
 ## Run the full-circle coverage backend
 
 The capture app only declares a scan complete after this lightweight local
