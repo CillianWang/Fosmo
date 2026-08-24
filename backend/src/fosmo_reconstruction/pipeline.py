@@ -102,6 +102,23 @@ def _infer_depth(
     checkpoint_path: Path,
     requested_device: str,
 ) -> tuple[np.ndarray, str, str, float]:
+    started = time.perf_counter()
+    model, transform, device, torch_version = _load_depth_model(
+        checkpoint_path,
+        requested_device,
+    )
+    depth = _infer_with_loaded_model(
+        image,
+        focal_length_pixels,
+        model,
+        transform,
+        device,
+    )
+    elapsed = time.perf_counter() - started
+    return depth, str(device), torch_version, elapsed
+
+
+def _load_depth_model(checkpoint_path: Path, requested_device: str):
     import depth_pro
     import torch
     from depth_pro.depth_pro import DEFAULT_MONODEPTH_CONFIG_DICT
@@ -111,16 +128,25 @@ def _infer_depth(
         DEFAULT_MONODEPTH_CONFIG_DICT,
         checkpoint_uri=str(checkpoint_path),
     )
-    started = time.perf_counter()
     model, transform = depth_pro.create_model_and_transforms(config=config, device=device)
     model.eval()
+    return model, transform, device, torch.__version__
+
+
+def _infer_with_loaded_model(
+    image: Image.Image,
+    focal_length_pixels: float,
+    model,
+    transform,
+    device,
+) -> np.ndarray:
+    import torch
+
     transformed = transform(image)
     focal = torch.tensor(focal_length_pixels, device=device, dtype=torch.float32)
     with torch.inference_mode():
         prediction = model.infer(transformed, f_px=focal)
-    depth = prediction["depth"].detach().to("cpu").numpy().astype(np.float32)
-    elapsed = time.perf_counter() - started
-    return depth, str(device), torch.__version__, elapsed
+    return prediction["depth"].detach().to("cpu").numpy().astype(np.float32)
 
 
 def _save_depth_preview(path: Path, depth: np.ndarray, minimum: float, maximum: float) -> None:

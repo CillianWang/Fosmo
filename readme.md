@@ -53,6 +53,19 @@ ARKit-world `pointcloud.ply`, a point-cloud preview, and `report.json`. See
 [`docs/reconstruction-smoke-test.md`](docs/reconstruction-smoke-test.md) for
 the coordinate conventions and current single-frame limitation.
 
+Fuse the full scan and export a Blender-ready colored mesh:
+
+```bash
+PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
+  -m fosmo_reconstruction.fusion_cli /path/to/scan.scanbundle \
+  --output /path/to/fused-output \
+  --checkpoint .vendor/ml-depth-pro/checkpoints/depth_pro.pt \
+  --device mps
+```
+
+The preferred Blender artifact is `room_blender_mesh.glb`; the full-resolution
+PLY mesh and fused point cloud are retained alongside it.
+
 ## Run the full-circle coverage backend
 
 The capture app only declares a scan complete after this lightweight local

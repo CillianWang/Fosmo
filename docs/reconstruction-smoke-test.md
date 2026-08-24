@@ -5,7 +5,8 @@ processed by Apple Depth Pro, backprojected with ARKit intrinsics, transformed
 by `worldFromCamera`, and exported as a colored metric point cloud.
 
 It is a real reconstruction, but it is intentionally not yet a fused 360-degree
-room model. Multi-frame fusion and wall/room measurement belong to M2.
+room model. The all-frame command below adds initial TSDF fusion; wall/room
+measurement and structural cleanup remain later M2 work.
 
 ## Set up the isolated environment
 
@@ -53,3 +54,33 @@ Run geometry regression tests inside the reconstruction environment:
 PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
   -m unittest backend/tests/test_reconstruction_geometry.py -v
 ```
+
+## Fuse every frame for Blender
+
+```bash
+PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
+  -m fosmo_reconstruction.fusion_cli \
+  /path/to/scan.scanbundle \
+  --output /path/to/fused-output \
+  --checkpoint .vendor/ml-depth-pro/checkpoints/depth_pro.pt \
+  --device mps
+```
+
+The command caches float16 depth for every frame, then automatically starts a
+fresh process for Open3D TSDF fusion. The process boundary avoids loading the
+large PyTorch/MPS model and Open3D in the same address space. Interrupted model
+inference resumes from the last complete depth file.
+
+Fusion outputs include:
+
+- `room_fused_pointcloud.ply` — voxel-downsampled colored world point cloud.
+- `room_mesh_full.ply` — full TSDF triangle mesh.
+- `room_blender_mesh.ply` — simplified colored mesh.
+- `room_blender_mesh.glb` — preferred Blender import artifact.
+- `room_model_preview.png` and `fusion_report.json`.
+
+In Blender, choose **File → Import → glTF 2.0** and select
+`room_blender_mesh.glb`. glTF uses meters and Y-up; Blender performs its normal
+axis conversion during import. This first fused model may contain furniture,
+surface thickness, and ghosting because each frame's depth is independently
+predicted. It must not yet be treated as a measured architectural shell.

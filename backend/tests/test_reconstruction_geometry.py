@@ -26,12 +26,14 @@ class ReconstructionGeometryTests(unittest.TestCase):
             _clockwise_rotation_for_upright,
             _restore_sensor_depth,
         )
+        from fosmo_reconstruction.fusion import world_to_cv_camera_extrinsic
 
         self.backproject_to_world = backproject_to_world
         self.scale_intrinsics = scale_intrinsics
         self.write_binary_ply = write_binary_ply
         self.clockwise_rotation_for_upright = _clockwise_rotation_for_upright
         self.restore_sensor_depth = _restore_sensor_depth
+        self.world_to_cv_camera_extrinsic = world_to_cv_camera_extrinsic
 
     def test_intrinsics_scale_with_image_resolution(self) -> None:
         scaled = self.scale_intrinsics(
@@ -94,6 +96,16 @@ class ReconstructionGeometryTests(unittest.TestCase):
         upright = np.array([[1, 2], [3, 4], [5, 6]])
         restored = self.restore_sensor_depth(upright, 90)
         np.testing.assert_array_equal(restored, [[2, 4, 6], [1, 3, 5]])
+
+    def test_open3d_extrinsic_converts_arkit_camera_axes(self) -> None:
+        extrinsic = self.world_to_cv_camera_extrinsic(np.eye(4))
+        np.testing.assert_array_equal(extrinsic, np.diag([1, -1, -1, 1]))
+
+    def test_open3d_extrinsic_inverts_world_from_camera_translation(self) -> None:
+        pose = np.eye(4)
+        pose[0, 3] = 1
+        extrinsic = self.world_to_cv_camera_extrinsic(pose)
+        np.testing.assert_allclose(extrinsic[:3, 3], [-1, 0, 0])
 
 
 if __name__ == "__main__":
