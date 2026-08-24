@@ -66,6 +66,11 @@ PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
 The preferred Blender artifact is `room_blender_mesh.glb`; the full-resolution
 PLY mesh and fused point cloud are retained alongside it.
 
+For a faster preview, add `--fast`. It samples 8 frames evenly across the full
+turn, uses a 640-pixel TSDF integration width, and targets 150,000 triangles.
+It preserves 360-degree coverage while trading local detail for substantially
+less Depth Pro inference and a smaller phone preview.
+
 ## Run the full-circle coverage backend
 
 The capture app only declares a scan complete after this lightweight local
@@ -73,10 +78,14 @@ service has received acceptable JPEG evidence for all 12 yaw sectors:
 
 ```bash
 cd backend
-PYTHONPATH=src python3 -m fosmo_coverage.server --host 0.0.0.0 --port 8765
+PYTHONPATH=src python3 -m fosmo_coverage.server --host 0.0.0.0 --port 8765 \
+  --preview-directory /path/to/fused-output
 ```
 
-The service keeps session state in memory and stores no images. Check it with
+The service keeps coverage session state in memory and stores no captured
+images. When a preview directory is supplied, it also serves the existing
+`room_blender_mesh.ply` through `/preview/manifest` and `/preview/model.ply`.
+Check it with
 `curl http://127.0.0.1:8765/health`, then enter the Mac's LAN URL in the iPhone
 app (for example, `http://192.168.1.20:8765`). This milestone confirms image
 view coverage, not semantic wall or room-plane detection.
@@ -92,6 +101,8 @@ The app records automatically selected RGB keyframes throughout a complete
 accepted by the coverage backend; there is no fixed five-frame completion.
 After confirmation it writes a ScanBundle 1.0 directory and presents the
 system share sheet for AirDrop or Files export.
+From the idle screen, **查看最近重建** downloads the configured PLY from the Mac
+and opens an interactive native SceneKit viewer; Blender is not involved.
 See [`docs/iphone-smoke-test.md`](docs/iphone-smoke-test.md) for the end-to-end
 test procedure.
 

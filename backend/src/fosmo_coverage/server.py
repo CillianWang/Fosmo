@@ -9,6 +9,7 @@ import threading
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from .tracker import CoverageFrameError, CoverageTracker, FrameObservation
@@ -38,11 +39,18 @@ class CoverageSessionStore:
 
 class CoverageRequestHandler(BaseHTTPRequestHandler):
     store = CoverageSessionStore()
+    preview_directory: Path | None = None
     server_version = "FosmoCoverage/1.0"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
             self._json(HTTPStatus.OK, {"status": "ok", "service": "fosmo-coverage", "version": "1.0"})
+            return
+        if self.path == "/preview/manifest":
+            self._preview_manifest()
+            return
+        if self.path == "/preview/model.ply":
+            self._preview_model()
             return
         match = SESSION_PATH.fullmatch(self.path)
         if match:
@@ -103,14 +111,69 @@ class CoverageRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _preview_manifest(self) -> None:
+        directory = self.preview_directory
+        if directory is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "no preview model is configured"})
+            return
+        model_path = directory / "room_blender_mesh.ply"
+        report_path = directory / "fusion_report.json"
+        if not model_path.is_file() or not report_path.is_file():
+            self._json(HTTPStatus.NOT_FOUND, {"error": "preview model is not ready"})
+            return
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            fusion = report["fusion"]
+            payload = {
+                "scan_id": report["scan_id"],
+                "frame_count": report["frame_count"],
+                "vertex_count": fusion["blender_mesh_vertices"],
+                "triangle_count": fusion["blender_mesh_triangles"],
+                "model_bytes": model_path.stat().st_size,
+                "model_url": "/preview/model.ply",
+            }
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"invalid preview report: {error}"})
+            return
+        self._json(HTTPStatus.OK, payload)
+
+    def _preview_model(self) -> None:
+        directory = self.preview_directory
+        model_path = directory / "room_blender_mesh.ply" if directory is not None else None
+        if model_path is None or not model_path.is_file():
+            self._json(HTTPStatus.NOT_FOUND, {"error": "preview model is not ready"})
+            return
+        try:
+            size = model_path.stat().st_size
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", 'attachment; filename="room_model.ply"')
+            self.end_headers()
+            with model_path.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Fosmo full-circle coverage service")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--preview-directory",
+        type=Path,
+        help="directory containing room_blender_mesh.ply and fusion_report.json",
+    )
     args = parser.parse_args()
+    CoverageRequestHandler.preview_directory = (
+        args.preview_directory.expanduser().resolve() if args.preview_directory else None
+    )
     server = ThreadingHTTPServer((args.host, args.port), CoverageRequestHandler)
     print(f"Fosmo coverage backend listening on http://{args.host}:{args.port}")
+    if CoverageRequestHandler.preview_directory:
+        print(f"Serving iPhone preview from {CoverageRequestHandler.preview_directory}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

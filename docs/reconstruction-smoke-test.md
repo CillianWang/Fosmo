@@ -71,6 +71,12 @@ fresh process for Open3D TSDF fusion. The process boundary avoids loading the
 large PyTorch/MPS model and Open3D in the same address space. Interrupted model
 inference resumes from the last complete depth file.
 
+For an interactive phone preview, add `--fast`. This selects 8 temporal
+keyframes spread over the complete capture rather than shortening the captured
+arc. Defaults also change to 4 cm voxels, 640-pixel integration, and a 150,000
+triangle target. Full mode remains the quality path; cached frame depths are
+reused by either mode when their selected IDs match.
+
 Fusion outputs include:
 
 - `room_fused_pointcloud.ply` — voxel-downsampled colored world point cloud.

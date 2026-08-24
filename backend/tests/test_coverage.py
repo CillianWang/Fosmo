@@ -4,6 +4,7 @@ import base64
 import math
 import json
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -111,6 +112,7 @@ class QuietCoverageRequestHandler(CoverageRequestHandler):
 class CoverageServerTests(unittest.TestCase):
     def setUp(self) -> None:
         QuietCoverageRequestHandler.store = CoverageSessionStore()
+        QuietCoverageRequestHandler.preview_directory = None
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), QuietCoverageRequestHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -142,6 +144,49 @@ class CoverageServerTests(unittest.TestCase):
         self.assertEqual(session["sectors_required"], 12)
         self.assertFalse(session["complete"])
         self.assertIn("session_id", session)
+
+    def test_preview_manifest_and_model_download(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            preview = Path(temporary_directory)
+            model = b"ply\nformat binary_little_endian 1.0\nend_header\nmodel"
+            (preview / "room_blender_mesh.ply").write_bytes(model)
+            (preview / "fusion_report.json").write_text(
+                json.dumps(
+                    {
+                        "scan_id": "scan-123",
+                        "frame_count": 21,
+                        "fusion": {
+                            "blender_mesh_vertices": 1234,
+                            "blender_mesh_triangles": 2345,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            QuietCoverageRequestHandler.preview_directory = preview
+            self.server = ThreadingHTTPServer(("127.0.0.1", 0), QuietCoverageRequestHandler)
+            self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+            self.thread.start()
+
+            connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=2)
+            connection.request("GET", "/preview/manifest")
+            response = connection.getresponse()
+            manifest = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(manifest["scan_id"], "scan-123")
+            self.assertEqual(manifest["triangle_count"], 2345)
+            self.assertEqual(manifest["model_bytes"], len(model))
+
+            connection.request("GET", "/preview/model.ply")
+            response = connection.getresponse()
+            body = response.read()
+            connection.close()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Length"), str(len(model)))
+            self.assertEqual(body, model)
 
 
 if __name__ == "__main__":

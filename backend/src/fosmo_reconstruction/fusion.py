@@ -31,6 +31,19 @@ FUSION_PIPELINE_VERSION = "fosmo-all-frame-tsdf-1"
 CV_FROM_ARKIT_CAMERA = np.diag((1.0, -1.0, -1.0, 1.0))
 
 
+def select_evenly_spaced_frames(
+    frames: list[dict[str, Any]],
+    maximum_count: int | None,
+) -> list[dict[str, Any]]:
+    """Keep temporal coverage of the full turn while limiting depth inference."""
+
+    if maximum_count is None or maximum_count >= len(frames):
+        return frames
+    if maximum_count < 2:
+        raise ValueError("maximum inference frame count must be at least 2")
+    return [frames[index * len(frames) // maximum_count] for index in range(maximum_count)]
+
+
 def world_to_cv_camera_extrinsic(
     world_from_camera: list[float] | tuple[float, ...] | np.ndarray,
 ) -> np.ndarray:
@@ -223,9 +236,10 @@ def reconstruct_all_frames(
     integration_width: int = 960,
     maximum_depth: float = 6.0,
     blender_triangle_target: int = 300000,
+    maximum_inference_frames: int | None = None,
     inference_only: bool = False,
 ) -> dict[str, Any]:
-    """Infer every frame and fuse them into Blender-compatible mesh artifacts."""
+    """Infer selected full-turn frames and fuse them into portable mesh artifacts."""
 
     total_started = time.perf_counter()
     bundle = Path(bundle_path).expanduser().resolve()
@@ -242,7 +256,9 @@ def reconstruct_all_frames(
 
     output.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
-    frames = manifest["frames"]
+    source_frames = manifest["frames"]
+    frames = select_evenly_spaced_frames(source_frames, maximum_inference_frames)
+    selected_frame_ids = [frame["id"] for frame in frames]
     cache_directory = output / "depth_frames"
     cache_manifest_path = cache_directory / "manifest.json"
     if inference_only:
@@ -266,12 +282,15 @@ def reconstruct_all_frames(
             and existing_cache_manifest is not None
             and existing_cache_manifest.get("pipeline_version") == FUSION_PIPELINE_VERSION
             and existing_cache_manifest.get("scan_id") == manifest["scan_id"]
+            and existing_cache_manifest.get("selected_frame_ids") == selected_frame_ids
         ):
             cache_manifest = existing_cache_manifest
         else:
             cache_manifest = {
                 "pipeline_version": FUSION_PIPELINE_VERSION,
                 "scan_id": manifest["scan_id"],
+                "source_frame_count": len(source_frames),
+                "selected_frame_ids": selected_frame_ids,
                 "frames": frame_results,
                 "model": {
                     "name": "Apple Depth Pro",
@@ -288,6 +307,8 @@ def reconstruct_all_frames(
         return {
             "status": "depths_cached",
             "frame_count": len(frame_results),
+            "source_frame_count": len(source_frames),
+            "selected_frame_ids": selected_frame_ids,
             "cache_manifest": str(cache_manifest_path),
         }
 
@@ -297,6 +318,7 @@ def reconstruct_all_frames(
     if (
         cache_manifest.get("pipeline_version") != FUSION_PIPELINE_VERSION
         or cache_manifest.get("scan_id") != manifest["scan_id"]
+        or cache_manifest.get("selected_frame_ids") != selected_frame_ids
     ):
         raise ReconstructionError("depth cache belongs to a different scan or pipeline version")
     for frame in frames:
@@ -429,6 +451,8 @@ def reconstruct_all_frames(
         "scan_id": manifest["scan_id"],
         "input_bundle": str(bundle),
         "frame_count": len(frames),
+        "source_frame_count": len(source_frames),
+        "selected_frame_ids": selected_frame_ids,
         "frames": frame_results,
         "model": {
             "name": "Apple Depth Pro",

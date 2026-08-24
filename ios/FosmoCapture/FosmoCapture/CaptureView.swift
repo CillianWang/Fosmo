@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CaptureView: View {
     @StateObject private var controller = ScanCaptureController()
+    @State private var showsModelPreview = false
 
     var body: some View {
         ZStack {
@@ -28,6 +29,11 @@ struct CaptureView: View {
         .preferredColorScheme(.dark)
         .onAppear { controller.startPreview() }
         .onDisappear { controller.pausePreview() }
+        .fullScreenCover(isPresented: $showsModelPreview) {
+            ModelPreviewView(backendURLString: controller.backendURLString)
+                .onAppear { controller.pausePreview() }
+                .onDisappear { controller.startPreview() }
+        }
     }
 
     private var header: some View {
@@ -98,6 +104,14 @@ struct CaptureView: View {
                 primaryButton("连接后端并开始", systemImage: "viewfinder") {
                     controller.startScan()
                 }
+                Button {
+                    showsModelPreview = true
+                } label: {
+                    Label("查看最近重建", systemImage: "cube.transparent")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.bordered)
             }
         case .connecting:
             HStack(spacing: 12) {
