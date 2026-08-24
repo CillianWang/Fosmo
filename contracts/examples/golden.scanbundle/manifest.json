@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "d302af50-f183-4bdd-a537-878d24163e3f",
+  "created_at": "2026-08-24T10:00:00+08:00",
+  "device": {
+    "model": "iPhone",
+    "os_version": "iOS 26.0"
+  },
+  "coordinate_system": {
+    "pose": "ARKit worldFromCamera",
+    "matrix_layout": "row-major",
+    "units": "meters"
+  },
+  "frames": [
+    {
+      "id": 1,
+      "image": "frames/000001.jpg",
+      "timestamp": 0.0,
+      "image_width": 4,
+      "image_height": 3,
+      "calibration_width": 4,
+      "calibration_height": 3,
+      "intrinsics": [3.0, 0.0, 2.0, 0.0, 3.0, 1.5, 0.0, 0.0, 1.0],
+      "world_from_camera": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      "tracking_state": "normal",
+      "tracking_reason": null,
+      "image_orientation": "sensor-native",
+      "image_format_version": "jpeg-v1"
+    },
+    {
+      "id": 2,
+      "image": "frames/000002.jpg",
+      "timestamp": 0.75,
+      "image_width": 4,
+      "image_height": 3,
+      "calibration_width": 4,
+      "calibration_height": 3,
+      "intrinsics": [3.0, 0.0, 2.0, 0.0, 3.0, 1.5, 0.0, 0.0, 1.0],
+      "world_from_camera": [1.0, 0.0, 0.0, 0.1, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      "tracking_state": "normal",
+      "tracking_reason": null,
+      "image_orientation": "sensor-native",
+      "image_format_version": "jpeg-v1"
+    },
+    {
+      "id": 3,
+      "image": "frames/000003.jpg",
+      "timestamp": 1.5,
+      "image_width": 4,
+      "image_height": 3,
+      "calibration_width": 4,
+      "calibration_height": 3,
+      "intrinsics": [3.0, 0.0, 2.0, 0.0, 3.0, 1.5, 0.0, 0.0, 1.0],
+      "world_from_camera": [1.0, 0.0, 0.0, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      "tracking_state": "normal",
+      "tracking_reason": null,
+      "image_orientation": "sensor-native",
+      "image_format_version": "jpeg-v1"
+    }
+  ]
+}

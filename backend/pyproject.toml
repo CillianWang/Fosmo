@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fosmo-scanbundle"
+version = "0.1.0"
+description = "Validation tools for Fosmo ScanBundle manifests"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+fosmo-validate = "fosmo_scanbundle.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

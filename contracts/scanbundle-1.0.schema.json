@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fosmo.local/contracts/scanbundle-1.0.schema.json",
+  "title": "Fosmo ScanBundle 1.0 manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scan_id",
+    "created_at",
+    "device",
+    "coordinate_system",
+    "frames"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "scan_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "device": { "$ref": "#/$defs/device" },
+    "coordinate_system": { "$ref": "#/$defs/coordinateSystem" },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/frame" }
+    }
+  },
+  "$defs": {
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "os_version"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "os_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coordinateSystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pose", "matrix_layout", "units"],
+      "properties": {
+        "pose": { "const": "ARKit worldFromCamera" },
+        "matrix_layout": { "const": "row-major" },
+        "units": { "const": "meters" }
+      }
+    },
+    "finiteNumber": { "type": "number" },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "image",
+        "timestamp",
+        "image_width",
+        "image_height",
+        "calibration_width",
+        "calibration_height",
+        "intrinsics",
+        "world_from_camera",
+        "tracking_state",
+        "tracking_reason",
+        "image_orientation",
+        "image_format_version"
+      ],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "image": {
+          "type": "string",
+          "pattern": "^frames/[0-9]{6}\\.jpg$"
+        },
+        "timestamp": { "type": "number", "minimum": 0 },
+        "image_width": { "type": "integer", "minimum": 1 },
+        "image_height": { "type": "integer", "minimum": 1 },
+        "calibration_width": { "type": "integer", "minimum": 1 },
+        "calibration_height": { "type": "integer", "minimum": 1 },
+        "intrinsics": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": { "$ref": "#/$defs/finiteNumber" }
+        },
+        "world_from_camera": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/finiteNumber" }
+        },
+        "tracking_state": { "const": "normal" },
+        "tracking_reason": { "type": "null" },
+        "image_orientation": { "const": "sensor-native" },
+        "image_format_version": { "const": "jpeg-v1" }
+      }
+    }
+  }
+}
