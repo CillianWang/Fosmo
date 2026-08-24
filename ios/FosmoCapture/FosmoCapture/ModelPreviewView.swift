@@ -25,16 +25,28 @@ final class ModelPreviewViewModel: ObservableObject {
                 try PLYMeshParser.parse(data)
             }.value
             self.manifest = manifest
-            scene = Self.makeScene(from: buffers)
+            scene = Self.makeScene(from: buffers, manhattanStyle: manifest.modelKind == "manhattan")
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private static func makeScene(from buffers: PLYMeshBuffers) -> SCNScene {
+    private static func makeScene(from buffers: PLYMeshBuffers, manhattanStyle: Bool) -> SCNScene {
         let scene = SCNScene()
-        let modelNode = SCNNode(geometry: buffers.makeGeometry())
+        let geometry = buffers.makeGeometry(manhattanStyle: manhattanStyle)
+        let modelNode = SCNNode(geometry: geometry)
         scene.rootNode.addChildNode(modelNode)
+        if manhattanStyle, let outlineGeometry = geometry.copy() as? SCNGeometry {
+            let outlineMaterial = SCNMaterial()
+            outlineMaterial.diffuse.contents = UIColor(white: 0.08, alpha: 1)
+            outlineMaterial.lightingModel = .constant
+            outlineMaterial.fillMode = .lines
+            outlineMaterial.writesToDepthBuffer = false
+            outlineGeometry.materials = [outlineMaterial, outlineMaterial]
+            let outlineNode = SCNNode(geometry: outlineGeometry)
+            outlineNode.renderingOrder = 10
+            scene.rootNode.addChildNode(outlineNode)
+        }
 
         let centerVector = (buffers.minimum + buffers.maximum) / 2
         let extent = buffers.maximum - buffers.minimum
@@ -45,12 +57,13 @@ final class ModelPreviewViewModel: ObservableObject {
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
+        cameraNode.camera?.fieldOfView = 58
         cameraNode.camera?.zNear = Double(max(0.01, radius / 100))
         cameraNode.camera?.zFar = Double(radius * 20)
         cameraNode.position = SCNVector3(
-            centerVector.x + radius * 0.25,
-            centerVector.y + radius * 0.35,
-            centerVector.z + radius * 1.7
+            centerVector.x + radius * 1.00,
+            centerVector.y + radius * 3.40,
+            centerVector.z + radius * 2.60
         )
         let lookAt = SCNLookAtConstraint(target: targetNode)
         lookAt.isGimbalLockEnabled = true

@@ -13,12 +13,12 @@ struct PLYMeshBuffers: Sendable {
     let maximum: SIMD3<Float>
 
     @MainActor
-    func makeGeometry() -> SCNGeometry {
+    func makeGeometry(manhattanStyle: Bool = false) -> SCNGeometry {
         let positionData = positions.withUnsafeBytes { Data($0) }
         let normalData = normals.withUnsafeBytes { Data($0) }
         let colorData = colors.withUnsafeBytes { Data($0) }
         let indexData = indices.withUnsafeBytes { Data($0) }
-        let sources = [
+        var sources = [
             SCNGeometrySource(
                 data: positionData,
                 semantic: .vertex,
@@ -39,7 +39,9 @@ struct PLYMeshBuffers: Sendable {
                 dataOffset: 0,
                 dataStride: 12
             ),
-            SCNGeometrySource(
+        ]
+        if !manhattanStyle {
+            sources.append(SCNGeometrySource(
                 data: colorData,
                 semantic: .color,
                 vectorCount: vertexCount,
@@ -48,21 +50,54 @@ struct PLYMeshBuffers: Sendable {
                 bytesPerComponent: 1,
                 dataOffset: 0,
                 dataStride: 4
-            ),
-        ]
-        let element = SCNGeometryElement(
-            data: indexData,
-            primitiveType: .triangles,
-            primitiveCount: triangleCount,
-            bytesPerIndex: 4
-        )
-        let geometry = SCNGeometry(sources: sources, elements: [element])
-        let material = SCNMaterial()
-        material.diffuse.contents = UIColor.white
-        material.lightingModel = .physicallyBased
-        material.isDoubleSided = true
-        material.roughness.contents = 0.9
-        geometry.materials = [material]
+            ))
+        }
+
+        let elements: [SCNGeometryElement]
+        if manhattanStyle, triangleCount >= 2 {
+            let floorData = indices.prefix(6).withUnsafeBytes { Data($0) }
+            let wallData = indices.dropFirst(6).withUnsafeBytes { Data($0) }
+            elements = [
+                SCNGeometryElement(
+                    data: floorData,
+                    primitiveType: .triangles,
+                    primitiveCount: 2,
+                    bytesPerIndex: 4
+                ),
+                SCNGeometryElement(
+                    data: wallData,
+                    primitiveType: .triangles,
+                    primitiveCount: triangleCount - 2,
+                    bytesPerIndex: 4
+                ),
+            ]
+        } else {
+            elements = [SCNGeometryElement(
+                data: indexData,
+                primitiveType: .triangles,
+                primitiveCount: triangleCount,
+                bytesPerIndex: 4
+            )]
+        }
+        let geometry = SCNGeometry(sources: sources, elements: elements)
+        if manhattanStyle {
+            let floorMaterial = SCNMaterial()
+            floorMaterial.diffuse.contents = UIColor(red: 0.28, green: 0.32, blue: 0.36, alpha: 1)
+            floorMaterial.lightingModel = .lambert
+            floorMaterial.isDoubleSided = true
+            let wallMaterial = SCNMaterial()
+            wallMaterial.diffuse.contents = UIColor(red: 0.62, green: 0.72, blue: 0.80, alpha: 1)
+            wallMaterial.lightingModel = .lambert
+            wallMaterial.isDoubleSided = true
+            geometry.materials = [floorMaterial, wallMaterial]
+        } else {
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.white
+            material.lightingModel = .physicallyBased
+            material.isDoubleSided = true
+            material.roughness.contents = 0.9
+            geometry.materials = [material]
+        }
         return geometry
     }
 }
@@ -175,4 +210,3 @@ enum PLYMeshParser {
         return Double(bitPattern: bits)
     }
 }
-

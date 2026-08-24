@@ -39,7 +39,9 @@ final class ScanCaptureController: NSObject, ObservableObject {
     private var coverageSessionID: String?
 
     override init() {
-        backendURLString = UserDefaults.standard.string(forKey: "coverageBackendURL") ?? "http://MoonShapedPool.local:8765"
+        backendURLString = ProcessInfo.processInfo.environment["FOSMO_BACKEND_URL"]
+            ?? UserDefaults.standard.string(forKey: "coverageBackendURL")
+            ?? "http://MoonShapedPool.local:8765"
         super.init()
         session.delegate = self
         session.delegateQueue = .main
