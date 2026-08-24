@@ -59,16 +59,19 @@ struct CaptureView: View {
                 Circle()
                     .stroke(.white.opacity(0.18), lineWidth: 5)
                 Circle()
-                    .trim(from: 0, to: Double(controller.keyframeCount) / Double(controller.maximumFrameCount))
+                    .trim(
+                        from: 0,
+                        to: Double(controller.coverageSectors) / Double(max(1, controller.requiredCoverageSectors))
+                    )
                     .stroke(.green, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Text("\(controller.keyframeCount)")
+                Text("\(controller.coverageSectors)")
                     .font(.title2.monospacedDigit().weight(.bold))
             }
             .frame(width: 58, height: 58)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("关键帧 \(controller.keyframeCount) / \(controller.maximumFrameCount)")
+                Text("后端覆盖 \(controller.coverageSectors) / \(controller.requiredCoverageSectors)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(controller.guidance)
@@ -85,15 +88,31 @@ struct CaptureView: View {
     private var controls: some View {
         switch controller.phase {
         case .idle:
-            primaryButton("开始扫描", systemImage: "viewfinder") {
-                controller.startScan()
+            VStack(spacing: 12) {
+                TextField("http://Mac地址:8765", text: $controller.backendURLString)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(12)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                primaryButton("连接后端并开始", systemImage: "viewfinder") {
+                    controller.startScan()
+                }
             }
+        case .connecting:
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("正在连接覆盖后端")
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         case .scanning:
             Button {
                 controller.finishScan()
             } label: {
                 Label(
-                    controller.keyframeCount >= controller.minimumFrameCount ? "结束并导出" : "至少需要 3 帧",
+                    controller.coverageComplete ? "结束并导出" : "等待后端确认完整一圈",
                     systemImage: "stop.fill"
                 )
                 .frame(maxWidth: .infinity)
@@ -101,7 +120,7 @@ struct CaptureView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
-            .disabled(controller.keyframeCount < controller.minimumFrameCount)
+            .disabled(!controller.coverageComplete)
         case .readyToShare:
             if let url = controller.exportedBundleURL {
                 ShareLink(item: url) {
@@ -145,6 +164,7 @@ struct CaptureView: View {
     private var phaseLabel: String {
         switch controller.phase {
         case .idle: "室内 RGB 扫描"
+        case .connecting: "连接覆盖服务"
         case .scanning: "正在采集 ScanBundle 1.0"
         case .readyToShare: "扫描完成"
         case .failed: "需要处理"

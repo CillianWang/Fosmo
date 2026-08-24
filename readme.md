@@ -30,14 +30,32 @@ cd ios/ScanBundleKit
 swift test
 ```
 
+## Run the full-circle coverage backend
+
+The capture app only declares a scan complete after this lightweight local
+service has received acceptable JPEG evidence for all 12 yaw sectors:
+
+```bash
+cd backend
+PYTHONPATH=src python3 -m fosmo_coverage.server --host 0.0.0.0 --port 8765
+```
+
+The service keeps session state in memory and stores no images. Check it with
+`curl http://127.0.0.1:8765/health`, then enter the Mac's LAN URL in the iPhone
+app (for example, `http://192.168.1.20:8765`). This milestone confirms image
+view coverage, not semantic wall or room-plane detection.
+
 ## Run the iPhone capture app
 
 Open [`ios/FosmoCapture/FosmoCapture.xcodeproj`](ios/FosmoCapture/FosmoCapture.xcodeproj)
 in Xcode, select a physical iPhone, and run the `FosmoCapture` scheme. ARKit
 capture is intentionally unavailable in the Simulator.
 
-The app records 3–5 automatically selected RGB keyframes, writes a ScanBundle
-1.0 directory, and presents the system share sheet for AirDrop or Files export.
+The app records automatically selected RGB keyframes throughout a complete
+360-degree turn. Its progress and export button are driven by JPEGs actually
+accepted by the coverage backend; there is no fixed five-frame completion.
+After confirmation it writes a ScanBundle 1.0 directory and presents the
+system share sheet for AirDrop or Files export.
 See [`docs/iphone-smoke-test.md`](docs/iphone-smoke-test.md) for the end-to-end
 test procedure.
 

@@ -8,6 +8,7 @@ import UIKit
 final class ScanCaptureController: NSObject, ObservableObject {
     enum Phase: Equatable {
         case idle
+        case connecting
         case scanning
         case readyToShare
         case failed(String)
@@ -20,9 +21,12 @@ final class ScanCaptureController: NSObject, ObservableObject {
     @Published private(set) var guidance = "点击开始，缓慢环绕房间"
     @Published private(set) var trackingIsNormal = false
     @Published private(set) var exportedBundleURL: URL?
+    @Published var backendURLString: String
+    @Published private(set) var coverageSectors = 0
+    @Published private(set) var requiredCoverageSectors = 12
+    @Published private(set) var coverageComplete = false
 
-    let minimumFrameCount = 3
-    let maximumFrameCount = 5
+    let maximumFrameCount = 120
 
     private var selector = KeyframeSelector(
         policy: KeyframePolicy(minimumSharpness: 0.015)
@@ -31,8 +35,11 @@ final class ScanCaptureController: NSObject, ObservableObject {
     private var scanID: UUID?
     private var createdAt: String?
     private var isProcessingFrame = false
+    private var coverageClient: CoverageBackendClient?
+    private var coverageSessionID: String?
 
     override init() {
+        backendURLString = UserDefaults.standard.string(forKey: "coverageBackendURL") ?? "http://MoonShapedPool.local:8765"
         super.init()
         session.delegate = self
         session.delegateQueue = .main
@@ -54,24 +61,50 @@ final class ScanCaptureController: NSObject, ObservableObject {
     }
 
     func startScan() {
+        guard phase == .idle || isFailure else { return }
+        phase = .connecting
+        guidance = "正在连接覆盖后端"
+        Task { await connectAndStartScan() }
+    }
+
+    private var isFailure: Bool {
+        if case .failed = phase { return true }
+        return false
+    }
+
+    private func connectAndStartScan() async {
         do {
+            guard let backendURL = normalizedBackendURL() else {
+                throw CoverageBackendError.invalidURL
+            }
+            let client = CoverageBackendClient(baseURL: backendURL)
+            let backendSession = try await client.createSession()
+            guard let backendSessionID = backendSession.sessionID else {
+                throw CoverageBackendError.invalidResponse
+            }
             let id = UUID()
             let scansDirectory = try Self.scansDirectory()
             writer = try ScanBundleWriter(outputDirectory: scansDirectory, scanID: id)
+            coverageClient = client
+            coverageSessionID = backendSessionID
             scanID = id
             createdAt = Self.iso8601Now()
             selector = KeyframeSelector(policy: KeyframePolicy(minimumSharpness: 0.015))
             keyframeCount = 0
+            coverageSectors = backendSession.sectorsCovered
+            requiredCoverageSectors = backendSession.sectorsRequired
+            coverageComplete = false
             exportedBundleURL = nil
-            guidance = "缓慢移动手机，保持墙面清晰可见"
+            UserDefaults.standard.set(backendURL.absoluteString, forKey: "coverageBackendURL")
+            guidance = "后端已连接；请稳定录制完整一圈"
             phase = .scanning
         } catch {
-            phase = .failed("无法创建扫描目录：\(error.localizedDescription)")
+            phase = .failed("无法开始扫描：\(error.localizedDescription)")
         }
     }
 
     func finishScan() {
-        guard phase == .scanning, keyframeCount >= minimumFrameCount else { return }
+        guard phase == .scanning, coverageComplete else { return }
         Task { await finalizeBundle() }
     }
 
@@ -81,6 +114,11 @@ final class ScanCaptureController: NSObject, ObservableObject {
         createdAt = nil
         exportedBundleURL = nil
         keyframeCount = 0
+        coverageSectors = 0
+        requiredCoverageSectors = 12
+        coverageComplete = false
+        coverageClient = nil
+        coverageSessionID = nil
         guidance = "点击开始，缓慢环绕房间"
         phase = .idle
     }
@@ -99,22 +137,29 @@ final class ScanCaptureController: NSObject, ObservableObject {
             switch selector.evaluate(candidate) {
             case .accept:
                 let captured = try ARKitFrameAdapter.capture(arFrame, id: keyframeCount + 1)
-                guard let writer else { return }
+                guard let writer, let coverageClient, let coverageSessionID else { return }
                 try await writer.append(jpegData: captured.jpegData, frame: captured.frame)
                 keyframeCount += 1
-                if keyframeCount == maximumFrameCount {
-                    guidance = "已采集 5 帧，正在生成 ScanBundle"
-                    await finalizeBundle()
-                } else if keyframeCount >= minimumFrameCount {
-                    guidance = "已保存 \(keyframeCount) 帧；可结束，或继续补扫"
-                } else {
-                    guidance = "已保存 \(keyframeCount) 帧；继续缓慢移动"
-                }
+                let thumbnail = try Self.thumbnailJPEG(from: captured.jpegData)
+                let status = try await coverageClient.submit(
+                    sessionID: coverageSessionID,
+                    frame: captured.frame,
+                    quality: quality,
+                    thumbnailJPEG: thumbnail
+                )
+                coverageSectors = status.sectorsCovered
+                requiredCoverageSectors = status.sectorsRequired
+                coverageComplete = status.complete
+                guidance = status.complete
+                    ? "后端已确认完整一圈；可以结束并导出"
+                    : "后端已确认 \(status.sectorsCovered)/\(status.sectorsRequired) 个方向；继续同一圈录制"
             case .reject(let reason):
-                guidance = Self.guidance(for: reason)
+                if reason == .trackingNotNormal {
+                    guidance = "ARKit 跟踪不稳定；后端未收到当前帧"
+                }
             }
         } catch {
-            guidance = "当前帧未保存：\(error.localizedDescription)"
+            guidance = "后端未确认当前帧：\(error.localizedDescription)"
         }
     }
 
@@ -127,6 +172,8 @@ final class ScanCaptureController: NSObject, ObservableObject {
             )
             exportedBundleURL = try await writer.finalize(createdAt: createdAt, device: device)
             self.writer = nil
+            coverageClient = nil
+            coverageSessionID = nil
             guidance = "ScanBundle 已生成，可通过隔空投送或文件导出"
             phase = .readyToShare
         } catch {
@@ -134,19 +181,24 @@ final class ScanCaptureController: NSObject, ObservableObject {
         }
     }
 
-    private static func guidance(for rejection: KeyframeRejection) -> String {
-        switch rejection {
-        case .trackingNotNormal:
-            return "跟踪不稳定：放慢并回看刚才扫过的区域"
-        case .tooSoon:
-            return "继续缓慢移动，保持画面稳定"
-        case .blurry:
-            return "画面偏模糊：请放慢"
-        case .exposureOutOfRange:
-            return "画面过暗或过亮：换一个观察角度"
-        case .insufficientMotion:
-            return "向左、向右或前后移动一小步"
+    private func normalizedBackendURL() -> URL? {
+        let trimmed = backendURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              components.scheme == "http" || components.scheme == "https",
+              components.host != nil else {
+            return nil
         }
+        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return components.url
+    }
+
+    private static func thumbnailJPEG(from jpegData: Data) throws -> Data {
+        guard let image = UIImage(data: jpegData),
+              let thumbnail = image.preparingThumbnail(of: CGSize(width: 320, height: 240)),
+              let encoded = thumbnail.jpegData(compressionQuality: 0.65) else {
+            throw CoverageBackendError.invalidResponse
+        }
+        return encoded
     }
 
     private static func scansDirectory() throws -> URL {
@@ -182,7 +234,7 @@ extension ScanCaptureController: @preconcurrency ARSessionDelegate {
             return false
         }()
         if !trackingIsNormal, phase == .scanning {
-            guidance = "跟踪不稳定：放慢并回看刚才扫过的区域"
+            guidance = "ARKit 跟踪不稳定；后端不会确认这些帧"
         }
     }
 
