@@ -73,8 +73,7 @@ actor ModelPreviewClient {
         }
         guard (200..<300).contains(response.statusCode) else {
             let message = (try? JSONSerialization.jsonObject(with: data) as? [String: String])?["error"]
-            let endpoint = response.url?.absoluteString ?? "未知地址"
-            throw ModelPreviewError.server(message ?? "模型服务返回 HTTP \(response.statusCode)：\(endpoint)")
+            throw ModelPreviewError.server(message ?? "模型服务返回 HTTP \(response.statusCode)")
         }
     }
 }

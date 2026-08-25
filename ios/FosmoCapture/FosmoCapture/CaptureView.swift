@@ -1,9 +1,8 @@
-import Foundation
 import SwiftUI
 
 struct CaptureView: View {
     @StateObject private var controller = ScanCaptureController()
-    @State private var showsModelPreview = ProcessInfo.processInfo.arguments.contains("--open-model-preview")
+    @State private var showsModelPreview = false
 
     var body: some View {
         ZStack {
@@ -158,14 +157,6 @@ struct CaptureView: View {
                     controller.reset()
                     controller.startPreview()
                 }
-                Button {
-                    showsModelPreview = true
-                } label: {
-                    Label("查看最近重建", systemImage: "cube.transparent")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                }
-                .buttonStyle(.bordered)
             }
         }
     }
