@@ -112,24 +112,36 @@ class CoverageRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _preview_manifest(self) -> None:
-        try:
-            payload, _ = self._preview_configuration()
-        except FileNotFoundError as error:
-            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+        directory = self.preview_directory
+        if directory is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "no preview model is configured"})
             return
-        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        model_path = directory / "room_blender_mesh.ply"
+        report_path = directory / "fusion_report.json"
+        if not model_path.is_file() or not report_path.is_file():
+            self._json(HTTPStatus.NOT_FOUND, {"error": "preview model is not ready"})
+            return
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            fusion = report["fusion"]
+            payload = {
+                "scan_id": report["scan_id"],
+                "frame_count": report["frame_count"],
+                "vertex_count": fusion["blender_mesh_vertices"],
+                "triangle_count": fusion["blender_mesh_triangles"],
+                "model_bytes": model_path.stat().st_size,
+                "model_url": "/preview/model.ply",
+            }
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"invalid preview report: {error}"})
             return
         self._json(HTTPStatus.OK, payload)
 
     def _preview_model(self) -> None:
-        try:
-            _, model_path = self._preview_configuration()
-        except FileNotFoundError as error:
-            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
-            return
-        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"invalid preview report: {error}"})
+        directory = self.preview_directory
+        model_path = directory / "room_blender_mesh.ply" if directory is not None else None
+        if model_path is None or not model_path.is_file():
+            self._json(HTTPStatus.NOT_FOUND, {"error": "preview model is not ready"})
             return
         try:
             size = model_path.stat().st_size
@@ -143,47 +155,6 @@ class CoverageRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
         except (BrokenPipeError, ConnectionResetError):
             return
-
-    def _preview_configuration(self) -> tuple[dict[str, Any], Path]:
-        directory = self.preview_directory
-        if directory is None:
-            raise FileNotFoundError("no preview model is configured")
-        explicit_manifest = directory / "preview_manifest.json"
-        if explicit_manifest.is_file():
-            payload = json.loads(explicit_manifest.read_text(encoding="utf-8"))
-            model_file = payload["model_file"]
-            if not isinstance(model_file, str) or Path(model_file).name != model_file:
-                raise ValueError("model_file must be a filename within the preview directory")
-            model_path = directory / model_file
-            result = {
-                "scan_id": payload["scan_id"],
-                "frame_count": payload["frame_count"],
-                "vertex_count": payload["vertex_count"],
-                "triangle_count": payload["triangle_count"],
-                "model_kind": payload.get("model_kind", "mesh"),
-                "model_bytes": model_path.stat().st_size,
-                "model_url": "/preview/model.ply",
-            }
-            if "dimensions_meters" in payload:
-                result["dimensions_meters"] = payload["dimensions_meters"]
-            if "height_meters" in payload:
-                result["height_meters"] = payload["height_meters"]
-        else:
-            model_path = directory / "room_blender_mesh.ply"
-            report = json.loads((directory / "fusion_report.json").read_text(encoding="utf-8"))
-            fusion = report["fusion"]
-            result = {
-                "scan_id": report["scan_id"],
-                "frame_count": report["frame_count"],
-                "vertex_count": fusion["blender_mesh_vertices"],
-                "triangle_count": fusion["blender_mesh_triangles"],
-                "model_kind": "fused",
-                "model_bytes": model_path.stat().st_size,
-                "model_url": "/preview/model.ply",
-            }
-        if not model_path.is_file():
-            raise FileNotFoundError("preview model is not ready")
-        return result, model_path
 
 
 def main() -> None:

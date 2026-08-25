@@ -188,50 +188,6 @@ class CoverageServerTests(unittest.TestCase):
             self.assertEqual(response.getheader("Content-Length"), str(len(model)))
             self.assertEqual(body, model)
 
-    def test_explicit_preview_manifest_can_serve_manhattan_model(self) -> None:
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            preview = Path(temporary_directory)
-            model = b"ply\nend_header\nclean-room"
-            (preview / "room_manhattan_mesh.ply").write_bytes(model)
-            (preview / "preview_manifest.json").write_text(
-                json.dumps(
-                    {
-                        "scan_id": "scan-clean",
-                        "frame_count": 21,
-                        "vertex_count": 20,
-                        "triangle_count": 10,
-                        "model_file": "room_manhattan_mesh.ply",
-                        "model_kind": "manhattan",
-                        "dimensions_meters": [3.4, 8.85],
-                        "height_meters": 2.92,
-                    }
-                ),
-                encoding="utf-8",
-            )
-            QuietCoverageRequestHandler.preview_directory = preview
-            self.server = ThreadingHTTPServer(("127.0.0.1", 0), QuietCoverageRequestHandler)
-            self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-            self.thread.start()
-
-            connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=2)
-            connection.request("GET", "/preview/manifest")
-            response = connection.getresponse()
-            manifest = json.loads(response.read())
-            self.assertEqual(response.status, 200)
-            self.assertEqual(manifest["model_kind"], "manhattan")
-            self.assertEqual(manifest["model_bytes"], len(model))
-            self.assertEqual(manifest["dimensions_meters"], [3.4, 8.85])
-            self.assertEqual(manifest["height_meters"], 2.92)
-
-            connection.request("GET", "/preview/model.ply")
-            response = connection.getresponse()
-            self.assertEqual(response.read(), model)
-            connection.close()
-
-
 
 if __name__ == "__main__":
     unittest.main()

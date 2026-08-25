@@ -7,9 +7,6 @@ struct ModelPreviewManifest: Decodable, Sendable {
     let triangleCount: Int
     let modelBytes: Int
     let modelURL: String
-    let modelKind: String?
-    let dimensionsMeters: [Double]?
-    let heightMeters: Double?
 
     enum CodingKeys: String, CodingKey {
         case scanID = "scan_id"
@@ -18,9 +15,6 @@ struct ModelPreviewManifest: Decodable, Sendable {
         case triangleCount = "triangle_count"
         case modelBytes = "model_bytes"
         case modelURL = "model_url"
-        case modelKind = "model_kind"
-        case dimensionsMeters = "dimensions_meters"
-        case heightMeters = "height_meters"
     }
 }
 
@@ -77,3 +71,4 @@ actor ModelPreviewClient {
         }
     }
 }
+

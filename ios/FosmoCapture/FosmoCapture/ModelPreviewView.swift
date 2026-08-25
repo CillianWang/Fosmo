@@ -1,4 +1,3 @@
-import Foundation
 import SceneKit
 import SwiftUI
 
@@ -109,7 +108,7 @@ struct ModelPreviewView: View {
                         .tint(.black.opacity(0.65))
                     Spacer()
                     if let manifest = model.manifest {
-                        Text(manifestLabel(manifest))
+                        Text("\(manifest.triangleCount.formatted()) 面")
                             .font(.caption.monospacedDigit().weight(.semibold))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -129,21 +128,6 @@ struct ModelPreviewView: View {
         }
         .preferredColorScheme(.dark)
         .task { await model.load(backendURLString: backendURLString) }
-    }
-
-    private func manifestLabel(_ manifest: ModelPreviewManifest) -> String {
-        if manifest.modelKind == "manhattan",
-           let dimensions = manifest.dimensionsMeters,
-           dimensions.count == 2,
-           let height = manifest.heightMeters {
-            return String(
-                format: "曼哈顿空间 %.2f × %.2f m · 高 %.2f m",
-                dimensions[0],
-                dimensions[1],
-                height
-            )
-        }
-        return "\(manifest.triangleCount.formatted()) 面"
     }
 }
 
@@ -165,3 +149,4 @@ private struct SceneKitPreview: UIViewRepresentable {
         view.scene = scene
     }
 }
+
