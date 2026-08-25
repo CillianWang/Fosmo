@@ -13,12 +13,16 @@ struct PLYMeshBuffers: Sendable {
     let maximum: SIMD3<Float>
 
     @MainActor
-    func makeGeometry() -> SCNGeometry {
+    func makeGeometry(floorTriangleCount: Int? = nil) -> SCNGeometry {
         let positionData = positions.withUnsafeBytes { Data($0) }
         let normalData = normals.withUnsafeBytes { Data($0) }
         let colorData = colors.withUnsafeBytes { Data($0) }
         let indexData = indices.withUnsafeBytes { Data($0) }
-        let sources = [
+        let usesFloorAndWallMaterials = {
+            guard let floorTriangleCount else { return false }
+            return floorTriangleCount > 0 && floorTriangleCount < triangleCount
+        }()
+        var sources = [
             SCNGeometrySource(
                 data: positionData,
                 semantic: .vertex,
@@ -39,7 +43,9 @@ struct PLYMeshBuffers: Sendable {
                 dataOffset: 0,
                 dataStride: 12
             ),
-            SCNGeometrySource(
+        ]
+        if !usesFloorAndWallMaterials {
+            sources.append(SCNGeometrySource(
                 data: colorData,
                 semantic: .color,
                 vectorCount: vertexCount,
@@ -48,21 +54,54 @@ struct PLYMeshBuffers: Sendable {
                 bytesPerComponent: 1,
                 dataOffset: 0,
                 dataStride: 4
-            ),
-        ]
-        let element = SCNGeometryElement(
-            data: indexData,
-            primitiveType: .triangles,
-            primitiveCount: triangleCount,
-            bytesPerIndex: 4
-        )
-        let geometry = SCNGeometry(sources: sources, elements: [element])
-        let material = SCNMaterial()
-        material.diffuse.contents = UIColor.white
-        material.lightingModel = .physicallyBased
-        material.isDoubleSided = true
-        material.roughness.contents = 0.9
-        geometry.materials = [material]
+            ))
+        }
+        let elements: [SCNGeometryElement]
+        if usesFloorAndWallMaterials, let floorTriangleCount {
+            let floorIndexCount = floorTriangleCount * 3
+            let floorData = indices.prefix(floorIndexCount).withUnsafeBytes { Data($0) }
+            let wallData = indices.dropFirst(floorIndexCount).withUnsafeBytes { Data($0) }
+            elements = [
+                SCNGeometryElement(
+                    data: floorData,
+                    primitiveType: .triangles,
+                    primitiveCount: floorTriangleCount,
+                    bytesPerIndex: 4
+                ),
+                SCNGeometryElement(
+                    data: wallData,
+                    primitiveType: .triangles,
+                    primitiveCount: triangleCount - floorTriangleCount,
+                    bytesPerIndex: 4
+                ),
+            ]
+        } else {
+            elements = [SCNGeometryElement(
+                data: indexData,
+                primitiveType: .triangles,
+                primitiveCount: triangleCount,
+                bytesPerIndex: 4
+            )]
+        }
+        let geometry = SCNGeometry(sources: sources, elements: elements)
+        if elements.count == 2 {
+            let floorMaterial = SCNMaterial()
+            floorMaterial.diffuse.contents = UIColor(red: 0.26, green: 0.29, blue: 0.32, alpha: 1)
+            floorMaterial.lightingModel = .lambert
+            floorMaterial.isDoubleSided = true
+            let wallMaterial = SCNMaterial()
+            wallMaterial.diffuse.contents = UIColor(red: 0.56, green: 0.69, blue: 0.78, alpha: 1)
+            wallMaterial.lightingModel = .lambert
+            wallMaterial.isDoubleSided = true
+            geometry.materials = [floorMaterial, wallMaterial]
+        } else {
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.white
+            material.lightingModel = .physicallyBased
+            material.isDoubleSided = true
+            material.roughness.contents = 0.9
+            geometry.materials = [material]
+        }
         return geometry
     }
 }
@@ -175,4 +214,3 @@ enum PLYMeshParser {
         return Double(bitPattern: bits)
     }
 }
-

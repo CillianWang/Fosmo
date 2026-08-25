@@ -159,6 +159,9 @@ class CoverageServerTests(unittest.TestCase):
                         "scan_id": "scan-123",
                         "frame_count": 21,
                         "fusion": {
+                            "model_kind": "world_top",
+                            "floor_mesh_triangles": 2000,
+                            "wall_segment_count": 18,
                             "blender_mesh_vertices": 1234,
                             "blender_mesh_triangles": 2345,
                         },
@@ -179,6 +182,9 @@ class CoverageServerTests(unittest.TestCase):
             self.assertEqual(manifest["scan_id"], "scan-123")
             self.assertEqual(manifest["triangle_count"], 2345)
             self.assertEqual(manifest["model_bytes"], len(model))
+            self.assertEqual(manifest["model_kind"], "world_top")
+            self.assertEqual(manifest["floor_mesh_triangles"], 2000)
+            self.assertEqual(manifest["wall_segment_count"], 18)
 
             connection.request("GET", "/preview/model.ply")
             response = connection.getresponse()

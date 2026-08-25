@@ -71,6 +71,20 @@ turn, uses a 640-pixel TSDF integration width, and targets 150,000 triangles.
 It preserves 360-degree coverage while trading local detail for substantially
 less Depth Pro inference and a smaller phone preview.
 
+To derive a lightweight model from the fused **World top** without forcing a
+rectangular or closed room, run:
+
+```bash
+PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
+  -m fosmo_reconstruction.topology_cli /path/to/fused-output \
+  --output /path/to/world-top-output
+```
+
+This produces finite vertical wall segments and floor tiles only where the
+point cloud contains supporting evidence. Unknown gaps stay open. See
+[`docs/world-top-topology.md`](docs/world-top-topology.md) for the method,
+artifacts, and monocular-depth limitations.
+
 ## Run the full-circle coverage backend
 
 The capture app only declares a scan complete after this lightweight local

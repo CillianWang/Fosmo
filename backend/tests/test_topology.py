@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+
+@unittest.skipUnless(np is not None, "reconstruction dependencies are not installed")
+class WorldTopTopologyTests(unittest.TestCase):
+    def test_finite_l_shape_does_not_become_a_bounding_box(self) -> None:
+        from fosmo_reconstruction.topology import extract_world_top_topology
+
+        points = []
+        normals = []
+        for x in np.linspace(0, 3, 55):
+            for z in np.linspace(0, 2, 40):
+                points.extend(([x, -1.5, z], [x, 1.2, z]))
+                normals.extend(([0, 1, 0], [0, -1, 0]))
+
+        def add_wall(start: tuple[float, float], end: tuple[float, float], normal: tuple[float, float]) -> None:
+            for amount in np.linspace(0, 1, 65):
+                x = start[0] + amount * (end[0] - start[0])
+                z = start[1] + amount * (end[1] - start[1])
+                for y in np.linspace(-1.5, 1.2, 20):
+                    points.append([x, y, z])
+                    normals.append([normal[0], 0, normal[1]])
+
+        add_wall((0, 0), (3, 0), (0, 1))
+        add_wall((3, 0), (3, 2), (1, 0))
+        add_wall((3, 2), (2, 2), (0, 1))
+        result = extract_world_top_topology(np.asarray(points), np.asarray(normals))
+
+        self.assertGreaterEqual(len(result.wall_segments), 3)
+        self.assertTrue(any(segment.length > 2.5 for segment in result.wall_segments))
+        # No evidence exists for the missing left edge x=0, z=0..2. A bounding-box
+        # implementation would invent that wall; the finite-segment extractor must not.
+        invented_left_edges = []
+        for segment in result.wall_segments:
+            midpoint = (segment.start_xz + segment.end_xz) / 2
+            direction = segment.end_xz - segment.start_xz
+            if abs(midpoint[0]) < 0.25 and abs(direction[1]) > 1.0:
+                invented_left_edges.append(segment)
+        self.assertEqual(invented_left_edges, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
+

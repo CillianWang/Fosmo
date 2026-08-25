@@ -1,8 +1,9 @@
+import Foundation
 import SwiftUI
 
 struct CaptureView: View {
     @StateObject private var controller = ScanCaptureController()
-    @State private var showsModelPreview = false
+    @State private var showsModelPreview = ProcessInfo.processInfo.arguments.contains("--open-model-preview")
 
     var body: some View {
         ZStack {

@@ -24,15 +24,23 @@ final class ModelPreviewViewModel: ObservableObject {
                 try PLYMeshParser.parse(data)
             }.value
             self.manifest = manifest
-            scene = Self.makeScene(from: buffers)
+            scene = Self.makeScene(
+                from: buffers,
+                floorTriangleCount: manifest.floorMeshTriangles
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private static func makeScene(from buffers: PLYMeshBuffers) -> SCNScene {
+    private static func makeScene(
+        from buffers: PLYMeshBuffers,
+        floorTriangleCount: Int?
+    ) -> SCNScene {
         let scene = SCNScene()
-        let modelNode = SCNNode(geometry: buffers.makeGeometry())
+        let modelNode = SCNNode(
+            geometry: buffers.makeGeometry(floorTriangleCount: floorTriangleCount)
+        )
         scene.rootNode.addChildNode(modelNode)
 
         let centerVector = (buffers.minimum + buffers.maximum) / 2
@@ -44,12 +52,13 @@ final class ModelPreviewViewModel: ObservableObject {
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
+        cameraNode.camera?.fieldOfView = 58
         cameraNode.camera?.zNear = Double(max(0.01, radius / 100))
         cameraNode.camera?.zFar = Double(radius * 20)
         cameraNode.position = SCNVector3(
-            centerVector.x + radius * 0.25,
-            centerVector.y + radius * 0.35,
-            centerVector.z + radius * 1.7
+            centerVector.x + radius * 1.0,
+            centerVector.y + radius * 3.4,
+            centerVector.z + radius * 2.6
         )
         let lookAt = SCNLookAtConstraint(target: targetNode)
         lookAt.isGimbalLockEnabled = true
@@ -108,7 +117,7 @@ struct ModelPreviewView: View {
                         .tint(.black.opacity(0.65))
                     Spacer()
                     if let manifest = model.manifest {
-                        Text("\(manifest.triangleCount.formatted()) 面")
+                        Text(manifestLabel(manifest))
                             .font(.caption.monospacedDigit().weight(.semibold))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -128,6 +137,13 @@ struct ModelPreviewView: View {
         }
         .preferredColorScheme(.dark)
         .task { await model.load(backendURLString: backendURLString) }
+    }
+
+    private func manifestLabel(_ manifest: ModelPreviewManifest) -> String {
+        if manifest.modelKind == "world_top", let segmentCount = manifest.wallSegmentCount {
+            return "World Top · \(segmentCount) 段墙"
+        }
+        return "\(manifest.triangleCount.formatted()) 面"
     }
 }
 
@@ -149,4 +165,3 @@ private struct SceneKitPreview: UIViewRepresentable {
         view.scene = scene
     }
 }
-
