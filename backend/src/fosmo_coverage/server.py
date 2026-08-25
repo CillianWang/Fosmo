@@ -132,7 +132,13 @@ class CoverageRequestHandler(BaseHTTPRequestHandler):
                 "model_bytes": model_path.stat().st_size,
                 "model_url": "/preview/model.ply",
             }
-            for key in ("model_kind", "floor_mesh_triangles", "wall_segment_count"):
+            for key in (
+                "model_kind",
+                "floor_mesh_triangles",
+                "wall_segment_count",
+                "capture_center_meters",
+                "initial_forward_xz",
+            ):
                 if key in fusion:
                     payload[key] = fusion[key]
         except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:

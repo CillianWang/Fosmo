@@ -86,12 +86,18 @@ struct PLYMeshBuffers: Sendable {
         let geometry = SCNGeometry(sources: sources, elements: elements)
         if elements.count == 2 {
             let floorMaterial = SCNMaterial()
-            floorMaterial.diffuse.contents = UIColor(red: 0.26, green: 0.29, blue: 0.32, alpha: 1)
-            floorMaterial.lightingModel = .lambert
+            floorMaterial.name = "warm-floor"
+            floorMaterial.diffuse.contents = UIColor(red: 0.34, green: 0.22, blue: 0.13, alpha: 1)
+            floorMaterial.lightingModel = .physicallyBased
+            floorMaterial.roughness.contents = 0.72
+            floorMaterial.metalness.contents = 0.0
             floorMaterial.isDoubleSided = true
             let wallMaterial = SCNMaterial()
-            wallMaterial.diffuse.contents = UIColor(red: 0.56, green: 0.69, blue: 0.78, alpha: 1)
-            wallMaterial.lightingModel = .lambert
+            wallMaterial.name = "cool-wall"
+            wallMaterial.diffuse.contents = UIColor(red: 0.56, green: 0.72, blue: 0.84, alpha: 1)
+            wallMaterial.lightingModel = .physicallyBased
+            wallMaterial.roughness.contents = 0.58
+            wallMaterial.metalness.contents = 0.0
             wallMaterial.isDoubleSided = true
             geometry.materials = [floorMaterial, wallMaterial]
         } else {

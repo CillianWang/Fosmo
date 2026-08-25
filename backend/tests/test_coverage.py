@@ -162,6 +162,8 @@ class CoverageServerTests(unittest.TestCase):
                             "model_kind": "world_top",
                             "floor_mesh_triangles": 2000,
                             "wall_segment_count": 18,
+                            "capture_center_meters": [0.1, 0.2, 0.3],
+                            "initial_forward_xz": [0.0, -1.0],
                             "blender_mesh_vertices": 1234,
                             "blender_mesh_triangles": 2345,
                         },
@@ -185,6 +187,8 @@ class CoverageServerTests(unittest.TestCase):
             self.assertEqual(manifest["model_kind"], "world_top")
             self.assertEqual(manifest["floor_mesh_triangles"], 2000)
             self.assertEqual(manifest["wall_segment_count"], 18)
+            self.assertEqual(manifest["capture_center_meters"], [0.1, 0.2, 0.3])
+            self.assertEqual(manifest["initial_forward_xz"], [0.0, -1.0])
 
             connection.request("GET", "/preview/model.ply")
             response = connection.getresponse()

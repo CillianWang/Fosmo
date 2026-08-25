@@ -80,8 +80,10 @@ PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
   --output /path/to/world-top-output
 ```
 
-This produces finite vertical wall segments and floor tiles only where the
-point cloud contains supporting evidence. Unknown gaps stay open. See
+This produces finite vertical wall segments without inventing missing walls,
+plus a floor filled to the outermost floor-and-wall evidence boundary. The
+iPhone viewer starts at the recorded capture centre with in-place 360-degree
+look controls, contrasting PBR materials, lighting, and shadows. See
 [`docs/world-top-topology.md`](docs/world-top-topology.md) for the method,
 artifacts, and monocular-depth limitations.
 

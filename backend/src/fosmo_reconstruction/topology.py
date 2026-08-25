@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from scipy.ndimage import binary_closing, label
+from scipy.ndimage import binary_closing, binary_dilation, label
+from scipy.spatial import ConvexHull, QhullError
 
 from .fusion import _export_blender_glb
 from .pipeline import ReconstructionError
@@ -263,6 +264,7 @@ def _observed_floor_grid(
     points: np.ndarray,
     normals: np.ndarray,
     floor_y: float,
+    wall_segments: tuple[WallSegment, ...],
     resolution: float = 0.12,
 ) -> GridMask:
     floor_points = (np.abs(points[:, 1] - floor_y) <= 0.13) & (np.abs(normals[:, 1]) >= 0.72)
@@ -277,7 +279,78 @@ def _observed_floor_grid(
         component_mask = components == component
         if int(component_mask.sum()) < 10:
             mask[component_mask] = False
+    # A detected finite wall is also valid evidence for the floor boundary.
+    # Rasterise the wall centre-lines into the same grid so the final floor
+    # reaches the outer wall runs rather than stopping at the last visible
+    # patch of floor texture.
+    wall_boundary = np.zeros_like(mask)
+    for segment in wall_segments:
+        sample_count = max(2, int(math.ceil(segment.length / (resolution * 0.5))))
+        samples = np.linspace(segment.start_xz, segment.end_xz, sample_count)
+        indices = np.floor((samples - minimum) / resolution).astype(int)
+        indices[:, 0] = np.clip(indices[:, 0], 0, shape_xz[0] - 1)
+        indices[:, 1] = np.clip(indices[:, 1], 0, shape_xz[1] - 1)
+        wall_boundary[indices[:, 1], indices[:, 0]] = True
+    mask |= binary_dilation(wall_boundary, structure=np.ones((3, 3), dtype=bool))
+    # The requested floor spans the outermost detected boundary. Fill the
+    # convex polygon around floor and finite-wall evidence; unlike the old
+    # Manhattan attempt this is not an axis-aligned rectangle and it does not
+    # alter, close, or extend any wall segment.
+    support = np.argwhere(mask)
+    if len(support) >= 3:
+        try:
+            hull = ConvexHull(support)
+            grid_points = np.indices(mask.shape).reshape(2, -1).T
+            inside = np.all(
+                hull.equations[:, :2] @ grid_points.T
+                + hull.equations[:, 2, np.newaxis]
+                <= 1e-8,
+                axis=0,
+            )
+            mask = inside.reshape(mask.shape)
+        except QhullError:
+            pass
     return GridMask(mask, minimum, resolution)
+
+
+def _capture_view_metadata(
+    source_report: dict[str, Any],
+    wall_segments: tuple[WallSegment, ...],
+) -> tuple[list[float], list[float]] | None:
+    """Return the ARKit capture centre and a useful initial horizontal view."""
+
+    input_bundle = source_report.get("input_bundle")
+    if not isinstance(input_bundle, str):
+        return None
+    manifest_path = Path(input_bundle).expanduser().resolve() / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        matrices = np.asarray(
+            [frame["world_from_camera"] for frame in manifest["frames"]],
+            dtype=np.float64,
+        ).reshape(-1, 4, 4)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if len(matrices) == 0 or not np.isfinite(matrices).all():
+        return None
+    centre = np.median(matrices[:, :3, 3], axis=0)
+    forward_xz = None
+    if wall_segments:
+        midpoints = np.asarray(
+            [(segment.start_xz + segment.end_xz) / 2.0 for segment in wall_segments]
+        )
+        weights = np.asarray([segment.length for segment in wall_segments])
+        target_xz = np.average(midpoints, axis=0, weights=weights)
+        candidate = target_xz - centre[[0, 2]]
+        norm = float(np.linalg.norm(candidate))
+        if norm >= 0.20:
+            forward_xz = candidate / norm
+    if forward_xz is None:
+        forward_xz = np.array([0.0, -1.0])
+    return (
+        np.round(centre, 5).tolist(),
+        np.round(forward_xz, 5).tolist(),
+    )
 
 
 def extract_world_top_topology(points: np.ndarray, normals: np.ndarray) -> TopologyResult:
@@ -295,7 +368,7 @@ def extract_world_top_topology(points: np.ndarray, normals: np.ndarray) -> Topol
     segments = _finite_wall_segments(wall_evidence, angle)
     if len(segments) < 2:
         raise ReconstructionError("World top did not contain enough finite wall segments")
-    observed_floor = _observed_floor_grid(points, normals, floor_y)
+    observed_floor = _observed_floor_grid(points, normals, floor_y, segments)
     return TopologyResult(
         floor_y=floor_y,
         ceiling_y=ceiling_y,
@@ -337,7 +410,7 @@ def _add_wall_box(
             [start + 3, start, start + 4], [start + 3, start + 4, start + 7],
         ]
     )
-    wall_color = [0.68, 0.76, 0.82]
+    wall_color = [0.56, 0.72, 0.84]
     colors.extend([wall_color] * 8)
 
 
@@ -357,7 +430,7 @@ def _topology_mesh(result: TopologyResult):
         y = result.floor_y + 0.005
         vertices.extend([[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]])
         triangles.extend(([start, start + 1, start + 2], [start, start + 2, start + 3]))
-        colors.extend([[0.30, 0.33, 0.36]] * 4)
+        colors.extend([[0.34, 0.22, 0.13]] * 4)
     for segment in result.wall_segments:
         _add_wall_box(
             vertices,
@@ -415,7 +488,7 @@ def _save_preview(path: Path, points: np.ndarray, result: TopologyResult) -> Non
             linewidth=5,
             solid_capstyle="butt",
         )
-    axes[1].set_title("Clean output: observed floor only; gaps stay open")
+    axes[1].set_title("Clean output: floor filled to the evidence-derived outer boundary")
     for axis in axes:
         axis.set_aspect("equal")
         axis.set_xlabel("X (m)")
@@ -450,6 +523,7 @@ def reconstruct_world_top(
     points = np.asarray(point_cloud.points)
     normals = np.asarray(point_cloud.normals)
     result = extract_world_top_topology(points, normals)
+    capture_view = _capture_view_metadata(source_report, result.wall_segments)
     mesh = _topology_mesh(result)
 
     output.mkdir(parents=True, exist_ok=True)
@@ -467,9 +541,21 @@ def reconstruct_world_top(
     _export_blender_glb(mesh, glb_path)
     _save_preview(preview_path, points, result)
 
+    fusion_metadata: dict[str, Any] = {
+        "method": "World top vertical-evidence finite wall segments",
+        "model_kind": "world_top",
+        "floor_mesh_triangles": int(result.observed_floor.mask.sum()) * 2,
+        "wall_segment_count": len(result.wall_segments),
+        "blender_mesh_vertices": int(len(mesh.vertices)),
+        "blender_mesh_triangles": int(len(mesh.triangles)),
+    }
+    if capture_view is not None:
+        fusion_metadata["capture_center_meters"] = capture_view[0]
+        fusion_metadata["initial_forward_xz"] = capture_view[1]
+
     report: dict[str, Any] = {
         "status": "completed",
-        "pipeline_version": "fosmo-world-top-segments-1",
+        "pipeline_version": "fosmo-world-top-segments-2",
         "scan_id": source_report["scan_id"],
         "frame_count": source_report["frame_count"],
         "input_fusion_directory": str(source),
@@ -479,17 +565,11 @@ def reconstruct_world_top(
             "axis_angle_degrees": round(math.degrees(result.axis_angle_radians), 4),
             "wall_segment_count": len(result.wall_segments),
             "wall_length_meters": round(sum(segment.length for segment in result.wall_segments), 4),
-            "observed_floor_tile_count": int(result.observed_floor.mask.sum()),
+            "floor_tile_count": int(result.observed_floor.mask.sum()),
+            "floor_boundary_kind": "convex_outer_evidence",
             "wall_segments": [segment.to_dict() for segment in result.wall_segments],
         },
-        "fusion": {
-            "method": "World top vertical-evidence finite wall segments",
-            "model_kind": "world_top",
-            "floor_mesh_triangles": int(result.observed_floor.mask.sum()) * 2,
-            "wall_segment_count": len(result.wall_segments),
-            "blender_mesh_vertices": int(len(mesh.vertices)),
-            "blender_mesh_triangles": int(len(mesh.triangles)),
-        },
+        "fusion": fusion_metadata,
         "artifacts": {
             "blender_mesh_ply": str(ply_path),
             "blender_mesh_glb": str(glb_path),
@@ -499,7 +579,7 @@ def reconstruct_world_top(
         "limitations": [
             "wall orientation is snapped, but positions and finite observed extents are retained",
             "unknown gaps are not bridged and the output is intentionally not a closed room",
-            "floor tiles are emitted only where horizontal floor evidence exists",
+            "floor is filled to the convex outer boundary of floor and finite-wall evidence",
             "monocular per-frame depth drift remains visible in the underlying World top",
         ],
     }
