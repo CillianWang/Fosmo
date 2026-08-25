@@ -44,12 +44,20 @@ intentional visualization choice: unlike the walls, the floor now spans
 unobserved interior regions. The boundary remains an irregular polygon rather
 than an axis-aligned room box.
 
+The mesh preserves the fused scan's RGB appearance by sampling horizontal
+source points onto the floor and vertical source points onto a 10-centimetre
+wall grid. This produces dense vertex colours in both PLY and GLB without
+requiring Blender. It is an approximate material projection, not a UV photo
+atlas; unsupported or unobserved floor regions inherit the nearest observed
+floor colour.
+
 The fusion report also carries the median ARKit capture position. The iPhone
 viewer starts at that eye point, not outside the model. A one-finger drag turns
 the camera in place through an unrestricted 360 degrees; pinching changes the
-field of view and a double tap restores the captured viewpoint. Warm floor and
-cool wall PBR materials, directional shadows, and a local fill light provide
-depth cues.
+field of view and a double tap restores the captured viewpoint. The viewer
+converts PLY colours to float RGBA explicitly, then uses separate lit floor and
+wall materials, directional shadows, and a local fill light without replacing
+the captured RGB.
 
 ## Current limitation
 

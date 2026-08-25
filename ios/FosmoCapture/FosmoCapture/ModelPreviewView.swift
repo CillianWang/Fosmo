@@ -75,9 +75,8 @@ final class ModelPreviewViewModel: ObservableObject {
         cameraNode.camera?.fieldOfView = 64
         cameraNode.camera?.zNear = 0.025
         cameraNode.camera?.zFar = Double(max(20, radius * 8))
-        cameraNode.camera?.wantsHDR = true
-        cameraNode.camera?.wantsExposureAdaptation = true
-        cameraNode.camera?.exposureOffset = -0.15
+        cameraNode.camera?.wantsHDR = false
+        cameraNode.camera?.wantsExposureAdaptation = false
         cameraNode.position = SCNVector3(
             capturePosition.x,
             capturePosition.y,
@@ -182,6 +181,9 @@ struct ModelPreviewView: View {
 
     private func manifestLabel(_ manifest: ModelPreviewManifest) -> String {
         if manifest.modelKind == "world_top", let segmentCount = manifest.wallSegmentCount {
+            if manifest.materialKind == "fused_rgb_vertex_colors" {
+                return "World Top · 原始材质 · \(segmentCount) 段墙"
+            }
             return "World Top · \(segmentCount) 段墙"
         }
         return "\(manifest.triangleCount.formatted()) 面"

@@ -83,7 +83,8 @@ PYTHONPATH=backend/src backend/.venv-reconstruction/bin/python \
 This produces finite vertical wall segments without inventing missing walls,
 plus a floor filled to the outermost floor-and-wall evidence boundary. The
 iPhone viewer starts at the recorded capture centre with in-place 360-degree
-look controls, contrasting PBR materials, lighting, and shadows. See
+look controls. Fused RGB is projected onto a dense floor/wall colour mesh and
+rendered with lighting and shadows instead of a flat replacement colour. See
 [`docs/world-top-topology.md`](docs/world-top-topology.md) for the method,
 artifacts, and monocular-depth limitations.
 

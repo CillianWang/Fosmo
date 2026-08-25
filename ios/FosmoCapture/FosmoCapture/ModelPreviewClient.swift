@@ -10,6 +10,7 @@ struct ModelPreviewManifest: Decodable, Sendable {
     let modelKind: String?
     let floorMeshTriangles: Int?
     let wallSegmentCount: Int?
+    let materialKind: String?
     let captureCenterMeters: [Float]?
     let initialForwardXZ: [Float]?
 
@@ -23,6 +24,7 @@ struct ModelPreviewManifest: Decodable, Sendable {
         case modelKind = "model_kind"
         case floorMeshTriangles = "floor_mesh_triangles"
         case wallSegmentCount = "wall_segment_count"
+        case materialKind = "material_kind"
         case captureCenterMeters = "capture_center_meters"
         case initialForwardXZ = "initial_forward_xz"
     }

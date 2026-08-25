@@ -16,7 +16,8 @@ struct PLYMeshBuffers: Sendable {
     func makeGeometry(floorTriangleCount: Int? = nil) -> SCNGeometry {
         let positionData = positions.withUnsafeBytes { Data($0) }
         let normalData = normals.withUnsafeBytes { Data($0) }
-        let colorData = colors.withUnsafeBytes { Data($0) }
+        let colorFloats = colors.map { Float($0) / 255.0 }
+        let colorData = colorFloats.withUnsafeBytes { Data($0) }
         let indexData = indices.withUnsafeBytes { Data($0) }
         let usesFloorAndWallMaterials = {
             guard let floorTriangleCount else { return false }
@@ -44,18 +45,16 @@ struct PLYMeshBuffers: Sendable {
                 dataStride: 12
             ),
         ]
-        if !usesFloorAndWallMaterials {
-            sources.append(SCNGeometrySource(
-                data: colorData,
-                semantic: .color,
-                vectorCount: vertexCount,
-                usesFloatComponents: false,
-                componentsPerVector: 4,
-                bytesPerComponent: 1,
-                dataOffset: 0,
-                dataStride: 4
-            ))
-        }
+        sources.append(SCNGeometrySource(
+            data: colorData,
+            semantic: .color,
+            vectorCount: vertexCount,
+            usesFloatComponents: true,
+            componentsPerVector: 4,
+            bytesPerComponent: 4,
+            dataOffset: 0,
+            dataStride: 16
+        ))
         let elements: [SCNGeometryElement]
         if usesFloorAndWallMaterials, let floorTriangleCount {
             let floorIndexCount = floorTriangleCount * 3
@@ -84,21 +83,33 @@ struct PLYMeshBuffers: Sendable {
             )]
         }
         let geometry = SCNGeometry(sources: sources, elements: elements)
+        let vertexColorShaders: [SCNShaderModifierEntryPoint: String] = [
+            .geometry: """
+                #pragma varyings
+                half4 fosmoVertexColor;
+                #pragma body
+                out.fosmoVertexColor = half4(_geometry.color);
+                """,
+            .surface: """
+                #pragma varyings
+                half4 fosmoVertexColor;
+                #pragma body
+                _surface.diffuse = float4(in.fosmoVertexColor);
+                """,
+        ]
         if elements.count == 2 {
             let floorMaterial = SCNMaterial()
-            floorMaterial.name = "warm-floor"
-            floorMaterial.diffuse.contents = UIColor(red: 0.34, green: 0.22, blue: 0.13, alpha: 1)
-            floorMaterial.lightingModel = .physicallyBased
-            floorMaterial.roughness.contents = 0.72
-            floorMaterial.metalness.contents = 0.0
+            floorMaterial.name = "captured-floor-material"
+            floorMaterial.diffuse.contents = UIColor.white
+            floorMaterial.lightingModel = .lambert
             floorMaterial.isDoubleSided = true
+            floorMaterial.shaderModifiers = vertexColorShaders
             let wallMaterial = SCNMaterial()
-            wallMaterial.name = "cool-wall"
-            wallMaterial.diffuse.contents = UIColor(red: 0.56, green: 0.72, blue: 0.84, alpha: 1)
-            wallMaterial.lightingModel = .physicallyBased
-            wallMaterial.roughness.contents = 0.58
-            wallMaterial.metalness.contents = 0.0
+            wallMaterial.name = "captured-wall-material"
+            wallMaterial.diffuse.contents = UIColor.white
+            wallMaterial.lightingModel = .lambert
             wallMaterial.isDoubleSided = true
+            wallMaterial.shaderModifiers = vertexColorShaders
             geometry.materials = [floorMaterial, wallMaterial]
         } else {
             let material = SCNMaterial()
@@ -106,6 +117,7 @@ struct PLYMeshBuffers: Sendable {
             material.lightingModel = .physicallyBased
             material.isDoubleSided = true
             material.roughness.contents = 0.9
+            material.shaderModifiers = vertexColorShaders
             geometry.materials = [material]
         }
         return geometry

@@ -136,6 +136,8 @@ class CoverageRequestHandler(BaseHTTPRequestHandler):
                 "model_kind",
                 "floor_mesh_triangles",
                 "wall_segment_count",
+                "material_kind",
+                "wall_texture_vertex_spacing_meters",
                 "capture_center_meters",
                 "initial_forward_xz",
             ):

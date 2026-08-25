@@ -379,47 +379,154 @@ def extract_world_top_topology(points: np.ndarray, normals: np.ndarray) -> Topol
     )
 
 
-def _add_wall_box(
+def _add_quad(
     vertices: list[list[float]],
     triangles: list[list[int]],
-    colors: list[list[float]],
+    vertex_kinds: list[int],
+    points: list[np.ndarray],
+) -> None:
+    start = len(vertices)
+    vertices.extend([[float(value) for value in point] for point in points])
+    vertex_kinds.extend([1] * 4)
+    triangles.extend(([start, start + 1, start + 2], [start, start + 2, start + 3]))
+
+
+def _add_textured_wall_box(
+    vertices: list[list[float]],
+    triangles: list[list[int]],
+    vertex_kinds: list[int],
     segment: WallSegment,
     floor_y: float,
     ceiling_y: float,
     thickness: float,
+    texture_spacing: float,
 ) -> None:
     tangent = segment.end_xz - segment.start_xz
     tangent /= np.linalg.norm(tangent)
-    normal = np.array([-tangent[1], tangent[0]]) * thickness / 2.0
-    footprint = [
-        segment.start_xz - normal,
-        segment.end_xz - normal,
-        segment.end_xz + normal,
-        segment.start_xz + normal,
-    ]
-    start = len(vertices)
-    for y in (floor_y, ceiling_y):
-        vertices.extend([[float(point[0]), y, float(point[1])] for point in footprint])
-    triangles.extend(
+    half_normal = np.array([-tangent[1], tangent[0]]) * thickness / 2.0
+    length_steps = max(1, int(math.ceil(segment.length / texture_spacing)))
+    height_steps = max(1, int(math.ceil((ceiling_y - floor_y) / texture_spacing)))
+
+    # The two broad faces carry most of the visible material. Subdivide them
+    # densely enough that fused RGB vertex colours retain local variation.
+    for side in (-1.0, 1.0):
+        start = len(vertices)
+        for vertical_index in range(height_steps + 1):
+            y = floor_y + (ceiling_y - floor_y) * vertical_index / height_steps
+            for length_index in range(length_steps + 1):
+                xz = (
+                    segment.start_xz
+                    + tangent * segment.length * length_index / length_steps
+                    + half_normal * side
+                )
+                vertices.append([float(xz[0]), float(y), float(xz[1])])
+                vertex_kinds.append(1)
+        row_width = length_steps + 1
+        for vertical_index in range(height_steps):
+            for length_index in range(length_steps):
+                lower = start + vertical_index * row_width + length_index
+                triangles.extend(
+                    ([lower, lower + 1, lower + row_width + 1],
+                     [lower, lower + row_width + 1, lower + row_width])
+                )
+
+    start_left = segment.start_xz - half_normal
+    start_right = segment.start_xz + half_normal
+    end_left = segment.end_xz - half_normal
+    end_right = segment.end_xz + half_normal
+    # End and top caps remain simple; their small area does not need a texture
+    # grid, but they still receive sampled source colours below.
+    _add_quad(
+        vertices,
+        triangles,
+        vertex_kinds,
         [
-            [start, start + 2, start + 1], [start, start + 3, start + 2],
-            [start + 4, start + 5, start + 6], [start + 4, start + 6, start + 7],
-            [start, start + 1, start + 5], [start, start + 5, start + 4],
-            [start + 1, start + 2, start + 6], [start + 1, start + 6, start + 5],
-            [start + 2, start + 3, start + 7], [start + 2, start + 7, start + 6],
-            [start + 3, start, start + 4], [start + 3, start + 4, start + 7],
-        ]
+            np.array([start_left[0], floor_y, start_left[1]]),
+            np.array([start_right[0], floor_y, start_right[1]]),
+            np.array([start_right[0], ceiling_y, start_right[1]]),
+            np.array([start_left[0], ceiling_y, start_left[1]]),
+        ],
     )
-    wall_color = [0.56, 0.72, 0.84]
-    colors.extend([wall_color] * 8)
+    _add_quad(
+        vertices,
+        triangles,
+        vertex_kinds,
+        [
+            np.array([end_right[0], floor_y, end_right[1]]),
+            np.array([end_left[0], floor_y, end_left[1]]),
+            np.array([end_left[0], ceiling_y, end_left[1]]),
+            np.array([end_right[0], ceiling_y, end_right[1]]),
+        ],
+    )
+    _add_quad(
+        vertices,
+        triangles,
+        vertex_kinds,
+        [
+            np.array([start_left[0], ceiling_y, start_left[1]]),
+            np.array([end_left[0], ceiling_y, end_left[1]]),
+            np.array([end_right[0], ceiling_y, end_right[1]]),
+            np.array([start_right[0], ceiling_y, start_right[1]]),
+        ],
+    )
 
 
-def _topology_mesh(result: TopologyResult):
+def _sample_source_colors(
+    vertices: np.ndarray,
+    vertex_kinds: np.ndarray,
+    source_points: np.ndarray,
+    source_normals: np.ndarray,
+    source_colors: np.ndarray,
+    floor_y: float,
+    ceiling_y: float,
+) -> np.ndarray:
+    from scipy.spatial import cKDTree
+
+    sampled = np.empty((len(vertices), 3), dtype=np.float64)
+    source_masks = (
+        (np.abs(source_points[:, 1] - floor_y) <= 0.20)
+        & (np.abs(source_normals[:, 1]) >= 0.65),
+        (source_points[:, 1] >= floor_y + 0.05)
+        & (source_points[:, 1] <= ceiling_y + 0.08)
+        & (np.abs(source_normals[:, 1]) <= 0.60),
+    )
+    for kind, source_mask in enumerate(source_masks):
+        target_mask = vertex_kinds == kind
+        candidates = source_points[source_mask]
+        candidate_colors = source_colors[source_mask]
+        if not int(target_mask.sum()):
+            continue
+        if len(candidates) < 8:
+            candidates = source_points
+            candidate_colors = source_colors
+        distances, indices = cKDTree(candidates).query(
+            vertices[target_mask],
+            k=min(4, len(candidates)),
+            workers=-1,
+        )
+        distances = np.atleast_2d(distances)
+        indices = np.atleast_2d(indices)
+        if distances.shape[0] != int(target_mask.sum()):
+            distances = distances.T
+            indices = indices.T
+        weights = 1.0 / np.maximum(distances, 0.025) ** 2
+        sampled[target_mask] = (
+            candidate_colors[indices] * weights[:, :, np.newaxis]
+        ).sum(axis=1) / weights.sum(axis=1, keepdims=True)
+    return np.clip(sampled, 0.0, 1.0)
+
+
+def _topology_mesh(
+    result: TopologyResult,
+    source_points: np.ndarray,
+    source_normals: np.ndarray,
+    source_colors: np.ndarray,
+):
     import open3d as o3d
 
     vertices: list[list[float]] = []
     triangles: list[list[int]] = []
-    colors: list[list[float]] = []
+    vertex_kinds: list[int] = []
     floor_rows, floor_columns = np.nonzero(result.observed_floor.mask)
     resolution = result.observed_floor.resolution
     for row, column in zip(floor_rows, floor_columns):
@@ -430,22 +537,33 @@ def _topology_mesh(result: TopologyResult):
         y = result.floor_y + 0.005
         vertices.extend([[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]])
         triangles.extend(([start, start + 1, start + 2], [start, start + 2, start + 3]))
-        colors.extend([[0.34, 0.22, 0.13]] * 4)
+        vertex_kinds.extend([0] * 4)
     for segment in result.wall_segments:
-        _add_wall_box(
+        _add_textured_wall_box(
             vertices,
             triangles,
-            colors,
+            vertex_kinds,
             segment,
             result.floor_y,
             result.ceiling_y,
             thickness=0.08,
+            texture_spacing=0.10,
         )
+    vertex_array = np.asarray(vertices)
+    colors = _sample_source_colors(
+        vertex_array,
+        np.asarray(vertex_kinds),
+        source_points,
+        source_normals,
+        source_colors,
+        result.floor_y,
+        result.ceiling_y,
+    )
     mesh = o3d.geometry.TriangleMesh(
-        o3d.utility.Vector3dVector(np.asarray(vertices)),
+        o3d.utility.Vector3dVector(vertex_array),
         o3d.utility.Vector3iVector(np.asarray(triangles, dtype=np.int32)),
     )
-    mesh.vertex_colors = o3d.utility.Vector3dVector(np.asarray(colors))
+    mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
     mesh.compute_vertex_normals()
     return mesh
 
@@ -522,9 +640,12 @@ def reconstruct_world_top(
     )
     points = np.asarray(point_cloud.points)
     normals = np.asarray(point_cloud.normals)
+    source_colors = np.asarray(point_cloud.colors)
+    if source_colors.shape != points.shape:
+        raise ReconstructionError("fused point cloud does not contain RGB material colours")
     result = extract_world_top_topology(points, normals)
     capture_view = _capture_view_metadata(source_report, result.wall_segments)
-    mesh = _topology_mesh(result)
+    mesh = _topology_mesh(result, points, normals, source_colors)
 
     output.mkdir(parents=True, exist_ok=True)
     ply_path = output / "room_blender_mesh.ply"
@@ -546,6 +667,8 @@ def reconstruct_world_top(
         "model_kind": "world_top",
         "floor_mesh_triangles": int(result.observed_floor.mask.sum()) * 2,
         "wall_segment_count": len(result.wall_segments),
+        "material_kind": "fused_rgb_vertex_colors",
+        "wall_texture_vertex_spacing_meters": 0.10,
         "blender_mesh_vertices": int(len(mesh.vertices)),
         "blender_mesh_triangles": int(len(mesh.triangles)),
     }
@@ -555,7 +678,7 @@ def reconstruct_world_top(
 
     report: dict[str, Any] = {
         "status": "completed",
-        "pipeline_version": "fosmo-world-top-segments-2",
+        "pipeline_version": "fosmo-world-top-segments-3",
         "scan_id": source_report["scan_id"],
         "frame_count": source_report["frame_count"],
         "input_fusion_directory": str(source),
@@ -580,6 +703,7 @@ def reconstruct_world_top(
             "wall orientation is snapped, but positions and finite observed extents are retained",
             "unknown gaps are not bridged and the output is intentionally not a closed room",
             "floor is filled to the convex outer boundary of floor and finite-wall evidence",
+            "material appearance is sampled from fused RGB points rather than a UV photo atlas",
             "monocular per-frame depth drift remains visible in the underlying World top",
         ],
     }

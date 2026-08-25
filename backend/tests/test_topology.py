@@ -14,6 +14,36 @@ except ImportError:
 
 @unittest.skipUnless(np is not None, "reconstruction dependencies are not installed")
 class WorldTopTopologyTests(unittest.TestCase):
+    def test_surface_colors_are_sampled_from_matching_source_layers(self) -> None:
+        from fosmo_reconstruction.topology import _sample_source_colors
+
+        floor_points = np.asarray(
+            [[offset * 0.01, -1.5, 0.0] for offset in range(-5, 5)]
+        )
+        wall_points = np.asarray(
+            [[1.0, -0.2 + offset * 0.04, 0.0] for offset in range(10)]
+        )
+        source_points = np.vstack((floor_points, wall_points))
+        source_normals = np.vstack(
+            (np.tile([0, 1, 0], (10, 1)), np.tile([1, 0, 0], (10, 1)))
+        )
+        source_colors = np.vstack(
+            (np.tile([0.9, 0.1, 0.1], (10, 1)), np.tile([0.1, 0.2, 0.9], (10, 1)))
+        )
+        sampled = _sample_source_colors(
+            np.asarray([[0, -1.5, 0], [1, 0, 0]]),
+            np.asarray([0, 1]),
+            source_points,
+            source_normals,
+            source_colors,
+            -1.5,
+            1.2,
+        )
+        self.assertGreater(sampled[0, 0], 0.85)
+        self.assertLess(sampled[0, 2], 0.2)
+        self.assertGreater(sampled[1, 2], 0.85)
+        self.assertLess(sampled[1, 0], 0.2)
+
     def test_floor_fills_outer_boundary_from_floor_and_walls(self) -> None:
         from fosmo_reconstruction.topology import WallSegment, _observed_floor_grid
 
